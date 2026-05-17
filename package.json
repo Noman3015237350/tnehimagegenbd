@@ -1,7 +1,7 @@
 {
   "name": "tneh-image-generator-api",
   "version": "1.0.0",
-  "description": "TNEH Image Generator API - PostgreSQL on Render.com",
+  "description": "TNEH Image Generator API - Simple memory storage version",
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js"
@@ -9,9 +9,6 @@
   "keywords": ["image-generator", "pollinations", "api"],
   "author": "TNEH",
   "license": "MIT",
-  "dependencies": {
-    "pg": "^8.11.3"
-  },
   "engines": {
     "node": "18.x"
   }
