@@ -1,31 +1,14 @@
 {
-  "name": "tneh-image-generator-api",
+  "name": "tneh-image-generator",
   "version": "1.0.0",
-  "description": "TNEH Image Generator API - Powered by Tneh group",
+  "description": "TNEH Image Generator API with tneh.ai",
   "main": "api/index.js",
   "scripts": {
-    "start": "node api/index.js",
-    "dev": "nodemon api/index.js",
-    "test": "node test.js"
+    "start": "node api/index.js"
   },
-  "keywords": [
-    "image-generation",
-    "ai-image",
-    "pollinations",
-    "tneh",
-    "image-generator",
-    "rest-api",
-    "vercel"
-  ],
+  "dependencies": {},
+  "devDependencies": {},
+  "keywords": ["image-generation", "pollinations", "tneh", "vercel"],
   "author": "TNEH",
-  "license": "MIT",
-  "engines": {
-    "node": ">=18.x"
-  },
-  "dependencies": {
-    "crypto": "^1.0.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  }
+  "license": "MIT"
 }
