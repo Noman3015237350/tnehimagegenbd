@@ -1,52 +1,8 @@
 // TNEH Image Generator API with Pollinations.ai
-// Fixed PostgreSQL Version for Render.com
+// Memory Storage Version (No Database Required)
 
-const { Pool } = require('pg');
-
-// PostgreSQL connection with better error handling
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  connectionTimeoutMillis: 5000,
-  idleTimeoutMillis: 30000,
-  max: 10
-});
-
-// Test database connection on startup
-async function testConnection() {
-  try {
-    const client = await pool.connect();
-    console.log('✅ Database connected successfully');
-    await client.query('SELECT NOW()');
-    client.release();
-    return true;
-  } catch (err) {
-    console.error('❌ Database connection failed:', err.message);
-    return false;
-  }
-}
-
-// Initialize database with proper error handling
-async function initDatabase() {
-  const client = await pool.connect();
-  try {
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS api_keys (
-        api_key TEXT PRIMARY KEY,
-        prompt_count INTEGER DEFAULT 0,
-        expire_date TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        last_used TEXT
-      )
-    `);
-    console.log('✅ Database table initialized');
-  } catch (err) {
-    console.error('❌ Database init failed:', err.message);
-    throw err;
-  } finally {
-    client.release();
-  }
-}
+// In-memory storage
+let apiKeys = new Map();
 
 // Helper Functions
 function generateApiKey() {
@@ -71,16 +27,6 @@ async function generateImageFromPollinations(prompt) {
   };
 }
 
-// Initialize on startup
-let dbInitialized = false;
-
-async function ensureDatabase() {
-  if (!dbInitialized) {
-    await initDatabase();
-    dbInitialized = true;
-  }
-}
-
 module.exports = async (req, res) => {
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -91,42 +37,34 @@ module.exports = async (req, res) => {
     return res.status(200).end();
   }
 
-  try {
-    await ensureDatabase();
-  } catch (err) {
-    console.error('Database error:', err);
-    return res.status(500).json({ 
-      error: "Database connection failed",
-      details: err.message,
-      solution: "Please check DATABASE_URL environment variable"
-    });
-  }
-
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
 
+  console.log(`${req.method} ${pathname} - Request received`);
+
   // GET / or /api - API Information
   if (pathname === "/" || pathname === "/api") {
-    try {
-      const result = await pool.query('SELECT COUNT(*) as count FROM api_keys');
-      return res.status(200).json({
-        name: "TNEH Image Generator API",
-        version: "1.0.0",
-        status: "Active",
-        baseUrl: "https://tnehimagegenbd.onrender.com",
-        keysInDatabase: parseInt(result.rows[0].count),
-        database: "PostgreSQL",
-        endpoints: {
-          "POST /api/create-key": "Create API key - ?expired=30",
-          "GET /api/keys": "List all API keys",
-          "GET /api/gen": "Generate image (JSON) - ?apikey=KEY&prompt=TEXT",
-          "GET /api/gen/image": "Generate image (PNG) - ?apikey=KEY&prompt=TEXT",
-          "DELETE /api/revoke-key": "Delete API key - ?apikey=KEY"
-        }
-      });
-    } catch (err) {
-      return res.status(500).json({ error: "Database error", message: err.message });
-    }
+    return res.status(200).json({
+      name: "TNEH Image Generator API",
+      version: "1.0.0",
+      status: "Active",
+      baseUrl: "https://tnehimagegenbd.onrender.com",
+      keysInMemory: apiKeys.size,
+      storage: "In-Memory (Temporary)",
+      endpoints: {
+        "POST /api/create-key": "Create API key - ব্যবহার: ?expired=30",
+        "GET /api/keys": "সব API key লিস্ট দেখুন",
+        "GET /api/gen": "ইমেজ জেনারেট (JSON) - ?apikey=KEY&prompt=TEXT",
+        "GET /api/gen/image": "ইমেজ জেনারেট (Direct PNG) - ?apikey=KEY&prompt=TEXT",
+        "DELETE /api/revoke-key": "API key ডিলিট করুন - ?apikey=KEY"
+      },
+      examples: {
+        create_key: `curl -X POST "https://tnehimagegenbd.onrender.com/api/create-key?expired=30"`,
+        list_keys: `curl https://tnehimagegenbd.onrender.com/api/keys`,
+        generate_image: `curl "https://tnehimagegenbd.onrender.com/api/gen/image?apikey=YOUR_KEY&prompt=cat" --output cat.png`,
+        delete_key: `curl -X DELETE "https://tnehimagegenbd.onrender.com/api/revoke-key?apikey=YOUR_KEY"`
+      }
+    });
   }
 
   // POST /api/create-key
@@ -169,53 +107,41 @@ module.exports = async (req, res) => {
     }
 
     const apiKey = generateApiKey();
-    const createdAt = new Date().toISOString();
-    
-    try {
-      await pool.query(
-        'INSERT INTO api_keys (api_key, expire_date, created_at) VALUES ($1, $2, $3)',
-        [apiKey, expireDate, createdAt]
-      );
+    apiKeys.set(apiKey, {
+      promptCount: 0,
+      expireDate: expireDate,
+      createdAt: new Date().toISOString(),
+      lastUsed: null
+    });
 
-      const result = await pool.query('SELECT COUNT(*) as count FROM api_keys');
-      
-      return res.status(201).json({
-        success: true,
-        apiKey: apiKey,
-        expireDate: expireDate,
-        message: "API Key created successfully",
-        totalKeys: parseInt(result.rows[0].count)
-      });
-    } catch (err) {
-      return res.status(500).json({ error: "Failed to create API key", details: err.message });
-    }
+    return res.status(201).json({
+      success: true,
+      apiKey: apiKey,
+      expireDate: expireDate,
+      message: "API Key created successfully",
+      totalKeys: apiKeys.size,
+      note: "⚠️ Save this key! Keys are stored in memory only."
+    });
   }
 
   // GET /api/keys
   if (pathname === "/api/keys" && req.method === "GET") {
-    try {
-      const result = await pool.query('SELECT * FROM api_keys ORDER BY created_at DESC');
-      const keys = result.rows.map(row => ({
-        key: row.api_key,
-        keyMasked: row.api_key.substring(0, 20) + "...",
-        expireDate: row.expire_date,
-        promptCount: row.prompt_count,
-        createdAt: row.created_at,
-        lastUsed: row.last_used,
-        isValid: new Date(row.expire_date) > new Date()
-      }));
-      
-      const totalResult = await pool.query('SELECT COUNT(*) as count FROM api_keys');
-      
-      return res.status(200).json({ 
-        success: true,
-        totalKeys: parseInt(totalResult.rows[0].count),
-        keys: keys,
-        serverTime: new Date().toISOString()
-      });
-    } catch (err) {
-      return res.status(500).json({ error: "Failed to fetch keys", details: err.message });
-    }
+    const keys = Array.from(apiKeys.entries()).map(([key, data]) => ({
+      key: key,
+      keyMasked: key.substring(0, 20) + "...",
+      expireDate: data.expireDate,
+      promptCount: data.promptCount,
+      createdAt: data.createdAt,
+      lastUsed: data.lastUsed,
+      isValid: new Date(data.expireDate) > new Date()
+    }));
+    
+    return res.status(200).json({ 
+      success: true,
+      totalKeys: apiKeys.size,
+      keys: keys,
+      serverTime: new Date().toISOString()
+    });
   }
 
   // DELETE /api/revoke-key
@@ -226,26 +152,20 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "apikey required" });
     }
     
-    try {
-      const result = await pool.query('SELECT * FROM api_keys WHERE api_key = $1', [apikey]);
-      
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: "API key not found" });
-      }
-      
-      await pool.query('DELETE FROM api_keys WHERE api_key = $1', [apikey]);
-      const remainingResult = await pool.query('SELECT COUNT(*) as count FROM api_keys');
-      
-      return res.status(200).json({
-        success: true,
-        message: "API key revoked successfully",
-        deletedKey: apikey.substring(0, 20) + "...",
-        expireDate: result.rows[0].expire_date,
-        remainingKeys: parseInt(remainingResult.rows[0].count)
-      });
-    } catch (err) {
-      return res.status(500).json({ error: "Failed to delete key", details: err.message });
+    if (!apiKeys.has(apikey)) {
+      return res.status(404).json({ error: "API key not found" });
     }
+    
+    const keyData = apiKeys.get(apikey);
+    apiKeys.delete(apikey);
+    
+    return res.status(200).json({
+      success: true,
+      message: "API key revoked successfully",
+      deletedKey: apikey.substring(0, 20) + "...",
+      expireDate: keyData.expireDate,
+      remainingKeys: apiKeys.size
+    });
   }
 
   // GET /api/gen (JSON Response)
@@ -257,38 +177,31 @@ module.exports = async (req, res) => {
       return res.status(400).json({ error: "apikey and prompt are required" });
     }
 
+    if (!apiKeys.has(apikey)) {
+      return res.status(401).json({ error: "API key not found" });
+    }
+
+    const keyData = apiKeys.get(apikey);
+    if (new Date() > new Date(keyData.expireDate)) {
+      return res.status(401).json({ error: "API key expired on " + keyData.expireDate });
+    }
+
     try {
-      const result = await pool.query('SELECT * FROM api_keys WHERE api_key = $1', [apikey]);
-      
-      if (result.rows.length === 0) {
-        return res.status(401).json({ error: "API key not found" });
-      }
-      
-      const keyData = result.rows[0];
-      
-      if (new Date() > new Date(keyData.expire_date)) {
-        return res.status(401).json({ error: "API key expired on " + keyData.expire_date });
-      }
+      keyData.promptCount++;
+      keyData.lastUsed = new Date().toISOString();
+      apiKeys.set(apikey, keyData);
 
-      const newPromptCount = keyData.prompt_count + 1;
-      const lastUsed = new Date().toISOString();
-      
-      await pool.query(
-        'UPDATE api_keys SET prompt_count = $1, last_used = $2 WHERE api_key = $3',
-        [newPromptCount, lastUsed, apikey]
-      );
-
-      const imageResult = await generateImageFromPollinations(prompt);
+      const result = await generateImageFromPollinations(prompt);
 
       return res.status(200).json({
         success: true,
         prompt: prompt,
-        imageBase64: imageResult.imageBase64,
-        usageCount: newPromptCount,
-        expireDate: keyData.expire_date
+        imageBase64: result.imageBase64,
+        usageCount: keyData.promptCount,
+        expireDate: keyData.expireDate
       });
-    } catch (err) {
-      return res.status(500).json({ error: "Image generation failed", details: err.message });
+    } catch (error) {
+      return res.status(500).json({ error: "Image generation failed: " + error.message });
     }
   }
 
@@ -301,26 +214,19 @@ module.exports = async (req, res) => {
       return res.status(400).send("Missing apikey or prompt");
     }
 
-    try {
-      const result = await pool.query('SELECT * FROM api_keys WHERE api_key = $1', [apikey]);
-      
-      if (result.rows.length === 0) {
-        return res.status(401).send("API key not found");
-      }
-      
-      const keyData = result.rows[0];
-      
-      if (new Date() > new Date(keyData.expire_date)) {
-        return res.status(401).send("API key expired");
-      }
+    if (!apiKeys.has(apikey)) {
+      return res.status(401).send("API key not found");
+    }
 
-      const newPromptCount = keyData.prompt_count + 1;
-      const lastUsed = new Date().toISOString();
-      
-      await pool.query(
-        'UPDATE api_keys SET prompt_count = $1, last_used = $2 WHERE api_key = $3',
-        [newPromptCount, lastUsed, apikey]
-      );
+    const keyData = apiKeys.get(apikey);
+    if (new Date() > new Date(keyData.expireDate)) {
+      return res.status(401).send("API key expired");
+    }
+
+    try {
+      keyData.promptCount++;
+      keyData.lastUsed = new Date().toISOString();
+      apiKeys.set(apikey, keyData);
 
       const encodedPrompt = encodeURIComponent(prompt);
       const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}`;
@@ -329,10 +235,14 @@ module.exports = async (req, res) => {
 
       res.setHeader("Content-Type", "image/png");
       return res.status(200).send(Buffer.from(imageBuffer));
-    } catch (err) {
-      return res.status(500).send("Image generation failed: " + err.message);
+    } catch (error) {
+      return res.status(500).send("Image generation failed");
     }
   }
 
-  return res.status(404).json({ error: "Endpoint not found" });
+  // 404
+  return res.status(404).json({ 
+    error: "Endpoint not found",
+    availableEndpoints: ["/", "/api", "/api/create-key", "/api/keys", "/api/gen", "/api/gen/image", "/api/revoke-key"]
+  });
 };
