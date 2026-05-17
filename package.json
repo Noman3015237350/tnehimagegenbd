@@ -4,11 +4,12 @@
   "description": "TNEH Image Generator API with tneh.ai",
   "main": "api/index.js",
   "scripts": {
+    "build": "echo Build completed",
     "start": "node api/index.js"
   },
   "dependencies": {},
   "devDependencies": {},
-  "keywords": ["image-generation", "pollinations", "tneh", "vercel"],
-  "author": "TNEH",
-  "license": "MIT"
+  "engines": {
+    "node": "18.x"
+  }
 }
