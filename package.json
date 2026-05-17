@@ -1,7 +1,7 @@
 {
   "name": "tneh-image-generator-api",
   "version": "1.0.0",
-  "description": "Image generation API with Pollinations.ai - Create AI images with API key authentication",
+  "description": "TNEH Image Generator API - Powered by Tneh group",
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js",
@@ -11,20 +11,16 @@
   "keywords": [
     "image-generation",
     "ai-image",
-    "api",
     "pollinations",
     "tneh",
     "image-generator",
-    "rest-api"
+    "rest-api",
+    "vercel"
   ],
   "author": "TNEH",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Noman3015237350/tnehimagegenbd.git"
-  },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.x"
   },
   "dependencies": {
     "crypto": "^1.0.1"
