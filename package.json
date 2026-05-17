@@ -1,7 +1,7 @@
 {
   "name": "tneh-image-generator-api",
   "version": "1.0.0",
-  "description": "TNEH Image Generator API with Pollinations.ai - Deployed on Render.com",
+  "description": "TNEH Image Generator API - Powerful image generation using Pollinations.ai with API key management, SQLite persistence, and easy deployment on Render.com",
   "main": "api/index.js",
   "scripts": {
     "start": "node api/index.js",
@@ -10,9 +10,17 @@
   "keywords": [
     "image-generator",
     "pollinations",
+    "ai-image-generation",
     "api",
     "render",
-    "tneh"
+    "tneh",
+    "image-api",
+    "text-to-image",
+    "ai-art",
+    "generative-ai",
+    "rest-api",
+    "sqlite",
+    "nodejs"
   ],
   "author": "TNEH",
   "license": "MIT",
