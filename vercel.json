@@ -12,7 +12,7 @@
       "dest": "/api/index.js"
     },
     {
-      "src": "/",
+      "src": "/(.*)",
       "dest": "/api/index.js"
     }
   ],
@@ -26,11 +26,11 @@
         },
         {
           "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, DELETE, OPTIONS"
+          "value": "GET, POST, PUT, DELETE, OPTIONS"
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, X-API-Key"
+          "value": "Content-Type, Authorization, X-API-Key"
         }
       ]
     }
