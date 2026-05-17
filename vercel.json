@@ -14,29 +14,6 @@
     {
       "src": "/api/(.*)",
       "dest": "/api/index.js"
-    },
-    {
-      "src": "/api/gen",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/api/gen/image",
-      "dest": "/api/index.js"
-    },
-    {
-      "src": "/api/create-key",
-      "dest": "/api/index.js",
-      "methods": ["POST"]
-    },
-    {
-      "src": "/api/keys",
-      "dest": "/api/index.js",
-      "methods": ["GET"]
-    },
-    {
-      "src": "/api/revoke-key",
-      "dest": "/api/index.js",
-      "methods": ["DELETE"]
     }
   ],
   "headers": [
@@ -49,11 +26,11 @@
         },
         {
           "key": "Access-Control-Allow-Methods",
-          "value": "GET, POST, PUT, DELETE, OPTIONS"
+          "value": "GET, POST, DELETE, OPTIONS"
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type, Authorization, X-API-Key"
+          "value": "Content-Type, X-API-Key"
         }
       ]
     }
