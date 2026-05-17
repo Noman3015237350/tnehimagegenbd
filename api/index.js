@@ -1,7 +1,22 @@
 // TNEH Image Generator API with Pollinations.ai
-// এখন ?expired=30 দিয়েও API Key তৈরি করা যাবে
+// Render.com Compatible Version with SQLite
 
-let apiKeys = new Map();
+const Database = require('better-sqlite3');
+const path = require('path');
+
+// Initialize SQLite database
+const db = new Database(path.join(__dirname, 'api_keys.db'));
+
+// Create table if not exists
+db.exec(`
+  CREATE TABLE IF NOT EXISTS api_keys (
+    api_key TEXT PRIMARY KEY,
+    prompt_count INTEGER DEFAULT 0,
+    expire_date TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_used TEXT
+  )
+`);
 
 // Helper Functions
 function generateApiKey() {
@@ -13,7 +28,6 @@ function isValidDate(dateString) {
   return !isNaN(date.getTime()) && date > new Date();
 }
 
-// Pollinations.ai Integration
 async function generateImageFromPollinations(prompt) {
   const encodedPrompt = encodeURIComponent(prompt);
   const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}`;
@@ -27,7 +41,37 @@ async function generateImageFromPollinations(prompt) {
   };
 }
 
-// Main Vercel Handler
+// Database operations
+function getApiKeyData(apiKey) {
+  const stmt = db.prepare('SELECT * FROM api_keys WHERE api_key = ?');
+  return stmt.get(apiKey);
+}
+
+function getAllKeys() {
+  const stmt = db.prepare('SELECT * FROM api_keys ORDER BY created_at DESC');
+  return stmt.all();
+}
+
+function createKey(apiKey, expireDate, createdAt) {
+  const stmt = db.prepare('INSERT INTO api_keys (api_key, expire_date, created_at) VALUES (?, ?, ?)');
+  return stmt.run(apiKey, expireDate, createdAt);
+}
+
+function updateKeyUsage(apiKey, promptCount, lastUsed) {
+  const stmt = db.prepare('UPDATE api_keys SET prompt_count = ?, last_used = ? WHERE api_key = ?');
+  return stmt.run(promptCount, lastUsed, apiKey);
+}
+
+function deleteKey(apiKey) {
+  const stmt = db.prepare('DELETE FROM api_keys WHERE api_key = ?');
+  return stmt.run(apiKey);
+}
+
+function getTotalKeys() {
+  const stmt = db.prepare('SELECT COUNT(*) as count FROM api_keys');
+  return stmt.get().count;
+}
+
 module.exports = async (req, res) => {
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -47,27 +91,28 @@ module.exports = async (req, res) => {
       name: "TNEH Image Generator API",
       version: "1.0.0",
       status: "Active",
-      keysInMemory: apiKeys.size,
+      keysInMemory: getTotalKeys(),
+      database: "SQLite (Persistent)",
       endpoints: {
-        "POST /api/create-key": "Create API key (JSON body or URL params)",
-        "GET /api/keys": "List all keys",
-        "GET /api/gen": "Generate image (JSON)",
-        "GET /api/gen/image": "Generate image (Direct PNG)"
+        "POST /api/create-key": "Create API key - ব্যবহার: ?expired=30 বা JSON বডি",
+        "GET /api/keys": "সব API key লিস্ট দেখুন",
+        "GET /api/gen": "ইমেজ জেনারেট (JSON) - ?apikey=KEY&prompt=TEXT",
+        "GET /api/gen/image": "ইমেজ জেনারেট (Direct PNG) - ?apikey=KEY&prompt=TEXT",
+        "DELETE /api/revoke-key": "API key ডিলিট করুন - ?apikey=KEY&delete=yes"
       },
       examples: {
-        create_key_via_json: `curl -X POST https://tnehimagegenbd.vercel.app/api/create-key -H "Content-Type: application/json" -d '{"expireDate": "2026-12-31"}'`,
-        create_key_via_params: `curl -X POST "https://tnehimagegenbd.vercel.app/api/create-key?expired=30"`,
-        list_keys: `curl https://tnehimagegenbd.vercel.app/api/keys`,
-        generate_image: `curl "https://tnehimagegenbd.vercel.app/api/gen/image?apikey=YOUR_KEY&prompt=cat" --output cat.png`
+        create_key: `curl -X POST "https://YOUR-RENDER-URL.onrender.com/api/create-key?expired=30"`,
+        list_keys: `curl https://YOUR-RENDER-URL.onrender.com/api/keys`,
+        generate_image: `curl "https://YOUR-RENDER-URL.onrender.com/api/gen/image?apikey=YOUR_KEY&prompt=cat" --output cat.png`,
+        delete_key: `curl -X DELETE "https://YOUR-RENDER-URL.onrender.com/api/revoke-key?apikey=YOUR_KEY&delete=yes"`
       }
     });
   }
 
-  // POST /api/create-key (সাপোর্ট করে: JSON বডি এবং URL প্যারামিটার)
+  // POST /api/create-key
   if (path === "/api/create-key" && req.method === "POST") {
     let expireDate = null;
     
-    // প্রথমে URL প্যারামিটার চেক করুন (যেমন: ?expired=30)
     const expiredDays = url.searchParams.get("expired");
     if (expiredDays && !isNaN(parseInt(expiredDays))) {
       const days = parseInt(expiredDays);
@@ -76,7 +121,6 @@ module.exports = async (req, res) => {
       expireDate = date.toISOString().split('T')[0];
     }
     
-    // URL প্যারামিটার না থাকলে, JSON বডি চেক করুন
     if (!expireDate) {
       try {
         let data = '';
@@ -85,8 +129,6 @@ module.exports = async (req, res) => {
         }
         const body = JSON.parse(data || "{}");
         expireDate = body.expireDate || body.expired;
-        
-        // যদি expired নামে সংখ্যা আসে (যেমন: {"expired": 30})
         if (expireDate && !isNaN(parseInt(expireDate)) && typeof expireDate === 'number') {
           const date = new Date();
           date.setDate(date.getDate() + parseInt(expireDate));
@@ -95,60 +137,90 @@ module.exports = async (req, res) => {
       } catch (e) {}
     }
     
-    // কোন পদ্ধতিতেই expireDate না পেলে error দিন
     if (!expireDate) {
       return res.status(400).json({ 
         error: "expireDate or expired parameter required",
-        example_via_url: "curl -X POST 'https://tnehimagegenbd.vercel.app/api/create-key?expired=30'",
-        example_via_json: "curl -X POST https://tnehimagegenbd.vercel.app/api/create-key -H 'Content-Type: application/json' -d '{\"expireDate\": \"2026-12-31\"}'"
+        example: "curl -X POST 'https://YOUR-RENDER-URL.onrender.com/api/create-key?expired=30'"
       });
     }
     
-    // যদি expireDate ভ্যালিড তারিখ না হয়
     if (!isValidDate(expireDate)) {
-      return res.status(400).json({ 
-        error: "Invalid expireDate. Use YYYY-MM-DD format or expired=DAYS" 
-      });
+      return res.status(400).json({ error: "Invalid expireDate" });
     }
 
     const apiKey = generateApiKey();
-    const keyData = {
-      promptCount: 0,
-      expireDate: expireDate,
-      createdAt: new Date().toISOString(),
-      lastUsed: null
-    };
+    const createdAt = new Date().toISOString();
     
-    apiKeys.set(apiKey, keyData);
+    createKey(apiKey, expireDate, createdAt);
 
     return res.status(201).json({
       success: true,
       apiKey: apiKey,
       expireDate: expireDate,
-      createdAt: keyData.createdAt,
       message: "API Key created successfully",
-      totalKeys: apiKeys.size,
-      testUrl: `https://tnehimagegenbd.vercel.app/api/gen/image?apikey=${apiKey}&prompt=cat`
+      totalKeys: getTotalKeys()
     });
   }
 
-  // GET /api/keys - List all keys
+  // GET /api/keys
   if (path === "/api/keys" && req.method === "GET") {
-    const keys = Array.from(apiKeys.entries()).map(([key, data]) => ({
-      key: key,
-      keyMasked: key.substring(0, 20) + "...",
-      expireDate: data.expireDate,
-      promptCount: data.promptCount,
-      createdAt: data.createdAt,
-      lastUsed: data.lastUsed || "Never",
-      isValid: new Date(data.expireDate) > new Date()
+    const keys = getAllKeys().map(row => ({
+      key: row.api_key,
+      keyMasked: row.api_key.substring(0, 20) + "...",
+      expireDate: row.expire_date,
+      promptCount: row.prompt_count,
+      createdAt: row.created_at,
+      lastUsed: row.last_used,
+      isValid: new Date(row.expire_date) > new Date()
     }));
     
     return res.status(200).json({ 
       success: true,
-      totalKeys: apiKeys.size,
+      totalKeys: getTotalKeys(),
       keys: keys,
       serverTime: new Date().toISOString()
+    });
+  }
+
+  // DELETE /api/revoke-key
+  if (path === "/api/revoke-key" && (req.method === "DELETE" || req.method === "GET")) {
+    const apikey = url.searchParams.get("apikey");
+    const deleteParam = url.searchParams.get("delete");
+    
+    let bodyKey = null;
+    if (req.method === "DELETE") {
+      try {
+        let data = '';
+        for await (const chunk of req) {
+          data += chunk;
+        }
+        const body = JSON.parse(data || "{}");
+        bodyKey = body.apiKey;
+      } catch (e) {}
+    }
+    
+    const finalKey = apikey || bodyKey;
+    
+    if (!finalKey) {
+      return res.status(400).json({ 
+        error: "apikey required",
+        example: "curl -X DELETE 'https://YOUR-RENDER-URL.onrender.com/api/revoke-key?apikey=YOUR_KEY&delete=yes'"
+      });
+    }
+    
+    const keyData = getApiKeyData(finalKey);
+    if (!keyData) {
+      return res.status(404).json({ error: "API key not found" });
+    }
+    
+    deleteKey(finalKey);
+    
+    return res.status(200).json({
+      success: true,
+      message: "API key revoked successfully",
+      deletedKey: finalKey.substring(0, 20) + "...",
+      expireDate: keyData.expire_date,
+      remainingKeys: getTotalKeys()
     });
   }
 
@@ -158,27 +230,22 @@ module.exports = async (req, res) => {
     const prompt = url.searchParams.get("prompt");
 
     if (!apikey || !prompt) {
-      return res.status(400).json({ 
-        error: "apikey and prompt are required",
-        example: "/api/gen?apikey=YOUR_KEY&prompt=beautiful+sunset"
-      });
+      return res.status(400).json({ error: "apikey and prompt are required" });
     }
 
-    if (!apiKeys.has(apikey)) {
-      return res.status(401).json({ 
-        error: "API key not found. Create a key using POST /api/create-key?expired=30"
-      });
+    const keyData = getApiKeyData(apikey);
+    if (!keyData) {
+      return res.status(401).json({ error: "API key not found" });
     }
 
-    const keyData = apiKeys.get(apikey);
-    if (new Date() > new Date(keyData.expireDate)) {
-      return res.status(401).json({ error: "API key expired on " + keyData.expireDate });
+    if (new Date() > new Date(keyData.expire_date)) {
+      return res.status(401).json({ error: "API key expired on " + keyData.expire_date });
     }
 
     try {
-      keyData.promptCount++;
-      keyData.lastUsed = new Date().toISOString();
-      apiKeys.set(apikey, keyData);
+      const newPromptCount = keyData.prompt_count + 1;
+      const lastUsed = new Date().toISOString();
+      updateKeyUsage(apikey, newPromptCount, lastUsed);
 
       const result = await generateImageFromPollinations(prompt);
 
@@ -186,11 +253,11 @@ module.exports = async (req, res) => {
         success: true,
         prompt: prompt,
         imageBase64: result.imageBase64,
-        usageCount: keyData.promptCount,
-        expireDate: keyData.expireDate
+        usageCount: newPromptCount,
+        expireDate: keyData.expire_date
       });
     } catch (error) {
-      return res.status(500).json({ error: "Image generation failed", message: error.message });
+      return res.status(500).json({ error: "Image generation failed" });
     }
   }
 
@@ -200,22 +267,22 @@ module.exports = async (req, res) => {
     const prompt = url.searchParams.get("prompt");
 
     if (!apikey || !prompt) {
-      return res.status(400).send("Missing apikey or prompt. Usage: /api/gen/image?apikey=KEY&prompt=TEXT");
+      return res.status(400).send("Missing apikey or prompt");
     }
 
-    if (!apiKeys.has(apikey)) {
-      return res.status(401).send("API key not found. Create a key using POST /api/create-key?expired=30");
+    const keyData = getApiKeyData(apikey);
+    if (!keyData) {
+      return res.status(401).send("API key not found");
     }
 
-    const keyData = apiKeys.get(apikey);
-    if (new Date() > new Date(keyData.expireDate)) {
+    if (new Date() > new Date(keyData.expire_date)) {
       return res.status(401).send("API key expired");
     }
 
     try {
-      keyData.promptCount++;
-      keyData.lastUsed = new Date().toISOString();
-      apiKeys.set(apikey, keyData);
+      const newPromptCount = keyData.prompt_count + 1;
+      const lastUsed = new Date().toISOString();
+      updateKeyUsage(apikey, newPromptCount, lastUsed);
 
       const encodedPrompt = encodeURIComponent(prompt);
       const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}`;
@@ -232,7 +299,6 @@ module.exports = async (req, res) => {
   // 404
   return res.status(404).json({ 
     error: "Endpoint not found",
-    availableEndpoints: ["/api", "/api/create-key", "/api/keys", "/api/gen", "/api/gen/image"],
-    note: "For create-key, use: POST /api/create-key?expired=30 or POST with JSON body"
+    available: ["/api", "/api/create-key", "/api/keys", "/api/gen", "/api/gen/image", "/api/revoke-key"]
   });
 };
