@@ -1,6 +1,6 @@
 // Configuration
 var admin = 8128648817;
-var botToken = "YOUR_BOT_TOKEN"; // Replace with your bot token
+var botToken = "8693000078:AAGHtOuYRkkjIomwfoLAaM_Zn7XHRUqGh8k"; // Replace with your bot token
 
 // Price packages
 var packages = {
