@@ -1,12 +1,8 @@
 {
   "name": "tneh-image-generator",
   "version": "1.0.0",
-  "description": "TNEH Image Generator API",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
-  },
-  "engines": {
-    "node": "18.x"
   }
 }
