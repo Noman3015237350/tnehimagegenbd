@@ -83,34 +83,35 @@ module.exports = async (req, res) => {
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
-  const path = url.pathname;
+  const pathname = url.pathname;
 
   // GET / or /api - API Information
-  if (path === "/" || path === "/api") {
+  if (pathname === "/" || pathname === "/api") {
     return res.status(200).json({
       name: "TNEH Image Generator API",
       version: "1.0.0",
       status: "Active",
-      keysInMemory: getTotalKeys(),
+      baseUrl: "https://tnehimagegenbd.onrender.com",
+      keysInDatabase: getTotalKeys(),
       database: "SQLite (Persistent)",
       endpoints: {
-        "POST /api/create-key": "Create API key - ব্যবহার: ?expired=30 বা JSON বডি",
+        "POST /api/create-key": "Create API key - ব্যবহার: ?expired=30",
         "GET /api/keys": "সব API key লিস্ট দেখুন",
         "GET /api/gen": "ইমেজ জেনারেট (JSON) - ?apikey=KEY&prompt=TEXT",
         "GET /api/gen/image": "ইমেজ জেনারেট (Direct PNG) - ?apikey=KEY&prompt=TEXT",
         "DELETE /api/revoke-key": "API key ডিলিট করুন - ?apikey=KEY&delete=yes"
       },
       examples: {
-        create_key: `curl -X POST "https://YOUR-RENDER-URL.onrender.com/api/create-key?expired=30"`,
-        list_keys: `curl https://YOUR-RENDER-URL.onrender.com/api/keys`,
-        generate_image: `curl "https://YOUR-RENDER-URL.onrender.com/api/gen/image?apikey=YOUR_KEY&prompt=cat" --output cat.png`,
-        delete_key: `curl -X DELETE "https://YOUR-RENDER-URL.onrender.com/api/revoke-key?apikey=YOUR_KEY&delete=yes"`
+        create_key: `curl -X POST "https://tnehimagegenbd.onrender.com/api/create-key?expired=30"`,
+        list_keys: `curl https://tnehimagegenbd.onrender.com/api/keys`,
+        generate_image: `curl "https://tnehimagegenbd.onrender.com/api/gen/image?apikey=YOUR_KEY&prompt=cat" --output cat.png`,
+        delete_key: `curl -X DELETE "https://tnehimagegenbd.onrender.com/api/revoke-key?apikey=YOUR_KEY&delete=yes"`
       }
     });
   }
 
   // POST /api/create-key
-  if (path === "/api/create-key" && req.method === "POST") {
+  if (pathname === "/api/create-key" && req.method === "POST") {
     let expireDate = null;
     
     const expiredDays = url.searchParams.get("expired");
@@ -140,7 +141,7 @@ module.exports = async (req, res) => {
     if (!expireDate) {
       return res.status(400).json({ 
         error: "expireDate or expired parameter required",
-        example: "curl -X POST 'https://YOUR-RENDER-URL.onrender.com/api/create-key?expired=30'"
+        example: "curl -X POST 'https://tnehimagegenbd.onrender.com/api/create-key?expired=30'"
       });
     }
     
@@ -158,12 +159,13 @@ module.exports = async (req, res) => {
       apiKey: apiKey,
       expireDate: expireDate,
       message: "API Key created successfully",
-      totalKeys: getTotalKeys()
+      totalKeys: getTotalKeys(),
+      note: "Save this API key! You won't see it again."
     });
   }
 
   // GET /api/keys
-  if (path === "/api/keys" && req.method === "GET") {
+  if (pathname === "/api/keys" && req.method === "GET") {
     const keys = getAllKeys().map(row => ({
       key: row.api_key,
       keyMasked: row.api_key.substring(0, 20) + "...",
@@ -183,9 +185,8 @@ module.exports = async (req, res) => {
   }
 
   // DELETE /api/revoke-key
-  if (path === "/api/revoke-key" && (req.method === "DELETE" || req.method === "GET")) {
+  if (pathname === "/api/revoke-key" && (req.method === "DELETE" || req.method === "GET")) {
     const apikey = url.searchParams.get("apikey");
-    const deleteParam = url.searchParams.get("delete");
     
     let bodyKey = null;
     if (req.method === "DELETE") {
@@ -204,7 +205,7 @@ module.exports = async (req, res) => {
     if (!finalKey) {
       return res.status(400).json({ 
         error: "apikey required",
-        example: "curl -X DELETE 'https://YOUR-RENDER-URL.onrender.com/api/revoke-key?apikey=YOUR_KEY&delete=yes'"
+        example: "curl -X DELETE 'https://tnehimagegenbd.onrender.com/api/revoke-key?apikey=YOUR_KEY&delete=yes'"
       });
     }
     
@@ -225,7 +226,7 @@ module.exports = async (req, res) => {
   }
 
   // GET /api/gen (JSON Response)
-  if (path === "/api/gen" && req.method === "GET") {
+  if (pathname === "/api/gen" && req.method === "GET") {
     const apikey = url.searchParams.get("apikey");
     const prompt = url.searchParams.get("prompt");
 
@@ -254,15 +255,16 @@ module.exports = async (req, res) => {
         prompt: prompt,
         imageBase64: result.imageBase64,
         usageCount: newPromptCount,
-        expireDate: keyData.expire_date
+        expireDate: keyData.expire_date,
+        message: "Image generated successfully"
       });
     } catch (error) {
-      return res.status(500).json({ error: "Image generation failed" });
+      return res.status(500).json({ error: "Image generation failed: " + error.message });
     }
   }
 
   // GET /api/gen/image (Direct PNG)
-  if (path === "/api/gen/image" && req.method === "GET") {
+  if (pathname === "/api/gen/image" && req.method === "GET") {
     const apikey = url.searchParams.get("apikey");
     const prompt = url.searchParams.get("prompt");
 
@@ -276,7 +278,7 @@ module.exports = async (req, res) => {
     }
 
     if (new Date() > new Date(keyData.expire_date)) {
-      return res.status(401).send("API key expired");
+      return res.status(401).send("API key expired on " + keyData.expire_date);
     }
 
     try {
@@ -290,15 +292,25 @@ module.exports = async (req, res) => {
       const imageBuffer = await response.arrayBuffer();
 
       res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Disposition", `inline; filename="generated-${Date.now()}.png"`);
       return res.status(200).send(Buffer.from(imageBuffer));
     } catch (error) {
-      return res.status(500).send("Image generation failed");
+      return res.status(500).send("Image generation failed: " + error.message);
     }
   }
 
   // 404
   return res.status(404).json({ 
     error: "Endpoint not found",
-    available: ["/api", "/api/create-key", "/api/keys", "/api/gen", "/api/gen/image", "/api/revoke-key"]
+    availableEndpoints: [
+      "/",
+      "/api",
+      "/api/create-key",
+      "/api/keys", 
+      "/api/gen",
+      "/api/gen/image",
+      "/api/revoke-key"
+    ],
+    documentation: "https://tnehimagegenbd.onrender.com/"
   });
 };
