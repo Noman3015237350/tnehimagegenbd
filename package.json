@@ -1,0 +1,35 @@
+{
+  "name": "tneh-image-generator-api",
+  "version": "1.0.0",
+  "description": "Image generation API with Pollinations.ai - Create AI images with API key authentication",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js",
+    "dev": "nodemon api/index.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "image-generation",
+    "ai-image",
+    "api",
+    "pollinations",
+    "tneh",
+    "image-generator",
+    "rest-api"
+  ],
+  "author": "TNEH",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/tneh-image-generator"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "crypto": "^1.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
