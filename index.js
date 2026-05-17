@@ -1,5 +1,7 @@
 // TNEH Image Generator API with Pollinations.ai
-// Memory Storage Version (No Database Required)
+// Render.com Optimized Version
+
+const http = require('http');
 
 // In-memory storage
 let apiKeys = new Map();
@@ -27,44 +29,41 @@ async function generateImageFromPollinations(prompt) {
   };
 }
 
-module.exports = async (req, res) => {
+// Create HTTP server
+const server = http.createServer(async (req, res) => {
   // CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, X-API-Key");
 
   if (req.method === "OPTIONS") {
-    return res.status(200).end();
+    res.statusCode = 200;
+    return res.end();
   }
 
   const url = new URL(req.url, `http://${req.headers.host}`);
   const pathname = url.pathname;
 
-  console.log(`${req.method} ${pathname} - Request received`);
+  console.log(`${req.method} ${pathname}`);
 
-  // GET / or /api - API Information
+  // GET / or /api
   if (pathname === "/" || pathname === "/api") {
-    return res.status(200).json({
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    return res.end(JSON.stringify({
       name: "TNEH Image Generator API",
       version: "1.0.0",
       status: "Active",
       baseUrl: "https://tnehimagegenbd.onrender.com",
       keysInMemory: apiKeys.size,
-      storage: "In-Memory (Temporary)",
       endpoints: {
-        "POST /api/create-key": "Create API key - ব্যবহার: ?expired=30",
-        "GET /api/keys": "সব API key লিস্ট দেখুন",
-        "GET /api/gen": "ইমেজ জেনারেট (JSON) - ?apikey=KEY&prompt=TEXT",
-        "GET /api/gen/image": "ইমেজ জেনারেট (Direct PNG) - ?apikey=KEY&prompt=TEXT",
-        "DELETE /api/revoke-key": "API key ডিলিট করুন - ?apikey=KEY"
-      },
-      examples: {
-        create_key: `curl -X POST "https://tnehimagegenbd.onrender.com/api/create-key?expired=30"`,
-        list_keys: `curl https://tnehimagegenbd.onrender.com/api/keys`,
-        generate_image: `curl "https://tnehimagegenbd.onrender.com/api/gen/image?apikey=YOUR_KEY&prompt=cat" --output cat.png`,
-        delete_key: `curl -X DELETE "https://tnehimagegenbd.onrender.com/api/revoke-key?apikey=YOUR_KEY"`
+        "POST /api/create-key": "Create API key - ?expired=30",
+        "GET /api/keys": "List all API keys",
+        "GET /api/gen": "Generate image (JSON) - ?apikey=KEY&prompt=TEXT",
+        "GET /api/gen/image": "Generate image (PNG) - ?apikey=KEY&prompt=TEXT",
+        "DELETE /api/revoke-key": "Delete API key - ?apikey=KEY"
       }
-    });
+    }, null, 2));
   }
 
   // POST /api/create-key
@@ -80,32 +79,27 @@ module.exports = async (req, res) => {
     }
     
     if (!expireDate) {
+      let body = '';
+      for await (const chunk of req) {
+        body += chunk;
+      }
       try {
-        let data = '';
-        for await (const chunk of req) {
-          data += chunk;
-        }
-        const body = JSON.parse(data || "{}");
-        expireDate = body.expireDate || body.expired;
+        const data = JSON.parse(body);
+        expireDate = data.expireDate || data.expired;
         if (expireDate && !isNaN(parseInt(expireDate))) {
           const date = new Date();
           date.setDate(date.getDate() + parseInt(expireDate));
           expireDate = date.toISOString().split('T')[0];
         }
-      } catch (e) {}
+      } catch(e) {}
     }
     
     if (!expireDate) {
-      return res.status(400).json({ 
-        error: "expireDate or expired parameter required",
-        example: "curl -X POST 'https://tnehimagegenbd.onrender.com/api/create-key?expired=30'"
-      });
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({ error: "expired parameter required" }));
     }
     
-    if (!isValidDate(expireDate)) {
-      return res.status(400).json({ error: "Invalid expireDate" });
-    }
-
     const apiKey = generateApiKey();
     apiKeys.set(apiKey, {
       promptCount: 0,
@@ -114,14 +108,14 @@ module.exports = async (req, res) => {
       lastUsed: null
     });
 
-    return res.status(201).json({
+    res.statusCode = 201;
+    res.setHeader("Content-Type", "application/json");
+    return res.end(JSON.stringify({
       success: true,
       apiKey: apiKey,
       expireDate: expireDate,
-      message: "API Key created successfully",
-      totalKeys: apiKeys.size,
-      note: "⚠️ Save this key! Keys are stored in memory only."
-    });
+      totalKeys: apiKeys.size
+    }, null, 2));
   }
 
   // GET /api/keys
@@ -132,58 +126,58 @@ module.exports = async (req, res) => {
       expireDate: data.expireDate,
       promptCount: data.promptCount,
       createdAt: data.createdAt,
-      lastUsed: data.lastUsed,
       isValid: new Date(data.expireDate) > new Date()
     }));
     
-    return res.status(200).json({ 
-      success: true,
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    return res.end(JSON.stringify({
       totalKeys: apiKeys.size,
-      keys: keys,
-      serverTime: new Date().toISOString()
-    });
+      keys: keys
+    }, null, 2));
   }
 
   // DELETE /api/revoke-key
   if (pathname === "/api/revoke-key" && (req.method === "DELETE" || req.method === "GET")) {
     const apikey = url.searchParams.get("apikey");
     
-    if (!apikey) {
-      return res.status(400).json({ error: "apikey required" });
+    if (!apikey || !apiKeys.has(apikey)) {
+      res.statusCode = 404;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({ error: "API key not found" }));
     }
     
-    if (!apiKeys.has(apikey)) {
-      return res.status(404).json({ error: "API key not found" });
-    }
-    
-    const keyData = apiKeys.get(apikey);
     apiKeys.delete(apikey);
     
-    return res.status(200).json({
+    res.statusCode = 200;
+    res.setHeader("Content-Type", "application/json");
+    return res.end(JSON.stringify({
       success: true,
-      message: "API key revoked successfully",
-      deletedKey: apikey.substring(0, 20) + "...",
-      expireDate: keyData.expireDate,
+      message: "API key revoked",
       remainingKeys: apiKeys.size
-    });
+    }, null, 2));
   }
 
-  // GET /api/gen (JSON Response)
+  // GET /api/gen (JSON)
   if (pathname === "/api/gen" && req.method === "GET") {
     const apikey = url.searchParams.get("apikey");
     const prompt = url.searchParams.get("prompt");
 
     if (!apikey || !prompt) {
-      return res.status(400).json({ error: "apikey and prompt are required" });
+      res.statusCode = 400;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({ error: "apikey and prompt required" }));
     }
 
     if (!apiKeys.has(apikey)) {
-      return res.status(401).json({ error: "API key not found" });
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ error: "Invalid API key" }));
     }
 
     const keyData = apiKeys.get(apikey);
     if (new Date() > new Date(keyData.expireDate)) {
-      return res.status(401).json({ error: "API key expired on " + keyData.expireDate });
+      res.statusCode = 401;
+      return res.end(JSON.stringify({ error: "API key expired" }));
     }
 
     try {
@@ -193,15 +187,17 @@ module.exports = async (req, res) => {
 
       const result = await generateImageFromPollinations(prompt);
 
-      return res.status(200).json({
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json");
+      return res.end(JSON.stringify({
         success: true,
         prompt: prompt,
         imageBase64: result.imageBase64,
-        usageCount: keyData.promptCount,
-        expireDate: keyData.expireDate
-      });
+        usageCount: keyData.promptCount
+      }));
     } catch (error) {
-      return res.status(500).json({ error: "Image generation failed: " + error.message });
+      res.statusCode = 500;
+      return res.end(JSON.stringify({ error: "Image generation failed" }));
     }
   }
 
@@ -211,16 +207,19 @@ module.exports = async (req, res) => {
     const prompt = url.searchParams.get("prompt");
 
     if (!apikey || !prompt) {
-      return res.status(400).send("Missing apikey or prompt");
+      res.statusCode = 400;
+      return res.end("Missing apikey or prompt");
     }
 
     if (!apiKeys.has(apikey)) {
-      return res.status(401).send("API key not found");
+      res.statusCode = 401;
+      return res.end("Invalid API key");
     }
 
     const keyData = apiKeys.get(apikey);
     if (new Date() > new Date(keyData.expireDate)) {
-      return res.status(401).send("API key expired");
+      res.statusCode = 401;
+      return res.end("API key expired");
     }
 
     try {
@@ -233,16 +232,25 @@ module.exports = async (req, res) => {
       const response = await fetch(imageUrl);
       const imageBuffer = await response.arrayBuffer();
 
+      res.statusCode = 200;
       res.setHeader("Content-Type", "image/png");
-      return res.status(200).send(Buffer.from(imageBuffer));
+      return res.end(Buffer.from(imageBuffer));
     } catch (error) {
-      return res.status(500).send("Image generation failed");
+      res.statusCode = 500;
+      return res.end("Image generation failed");
     }
   }
 
   // 404
-  return res.status(404).json({ 
-    error: "Endpoint not found",
-    availableEndpoints: ["/", "/api", "/api/create-key", "/api/keys", "/api/gen", "/api/gen/image", "/api/revoke-key"]
-  });
-};
+  res.statusCode = 404;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify({ error: "Endpoint not found" }));
+});
+
+// Start server
+const PORT = process.env.PORT || 10000;
+server.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🌐 API URL: https://tnehimagegenbd.onrender.com`);
+  console.log(`📊 Total keys in memory: ${apiKeys.size}`);
+});
