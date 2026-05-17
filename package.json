@@ -1,6 +1,25 @@
 {
-  "name": "tneh-image-generator",
+  "name": "tneh-image-generator-api",
   "version": "1.0.0",
-  "description": "TNEH Image Generator API",
-  "main": "api/index.js"
+  "description": "TNEH Image Generator API with tneh.ai - Deployed on tneh.com",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js",
+    "dev": "node api/index.js"
+  },
+  "keywords": [
+    "image-generator",
+    "pollinations",
+    "api",
+    "render.com",
+    "tneh"
+  ],
+  "author": "TNEH",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
 }
