@@ -1,3 +1,5 @@
+export const runtime = 'nodejs18.x';
+
 // TNEH Image Generator API with Pollinations.ai
 // Live at: https://tnehimagegenbd.vercel.app
 
